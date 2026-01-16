@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-queue-bus-demo-service"
+version = "0.0.1"
+description = "Demo Python service for py-queue-bus interop"
+requires-python = ">=3.9"
+dependencies = [
+  "py-queue-bus @ file:../..",
+]
+
+[tool.setuptools]
+packages = []

@@ -1,0 +1,14 @@
+{
+  "name": "node-service-queue-bus",
+  "version": "0.0.1",
+  "description": "Node microservice harness for queue-bus interop tests",
+  "main": "subscriber.js",
+  "scripts": {
+    "subscribe": "node subscriber.js",
+    "publish": "node publisher.js"
+  },
+  "dependencies": {
+    "node-queue-bus": "^0.2.1",
+    "ioredis": "^5.3.2"
+  }
+}

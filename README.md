@@ -56,7 +56,7 @@ rider.start()  # blocking worker
 ## Scheduling (RQ)
 - `publish_at` / `publish_in` enqueue scheduled publishes using RQ. Run a worker:
   ```bash
-  rq worker queue_bus_schedule
+  rq worker --with-scheduler queue_bus_schedule
   ```
 - Example entrypoint: `py-queue-bus/examples/rq_worker.py`.
 - Note: Scheduling is Python-native via RQ. Node/Ruby schedulers (resque-scheduler/node-resque) won’t see Python-scheduled jobs; they only see fired jobs after RQ publishes them.

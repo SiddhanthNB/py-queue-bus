@@ -2,5 +2,5 @@
 RQ worker entrypoint for scheduled publishes.
 
 Run:
-    rq worker queue_bus_schedule
+    rq worker --with-scheduler queue_bus_schedule
 """

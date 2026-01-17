@@ -16,6 +16,7 @@ CONNECTION = {
     "db": 0,
     "namespace": "resque",
 }
+# Or use: CONNECTION = {"url": "redis://:password@127.0.0.1:6379/0", "namespace": "resque"}
 
 
 def _log(msg):

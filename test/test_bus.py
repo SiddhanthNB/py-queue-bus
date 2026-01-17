@@ -1,6 +1,7 @@
 import json
 
 import pytest
+import fakeredis
 
 from py_queue_bus.bus import Bus
 
@@ -85,3 +86,41 @@ def test_publish_in_uses_rq_enqueue_at(monkeypatch, bus):
     assert job_id == "job-id"
     assert captured["event_type"] == "demo_event"
     assert captured["args"]["x"] == 2
+
+
+def test_connect_with_url(fake_redis):
+    connection = {"url": "redis://127.0.0.1:6379/0", "namespace": "resque"}
+    bus = Bus(connection=connection)
+    bus.connect()
+    bus.publish("demo_event", {"x": 99})
+    queue_key = f"{bus.connection.namespace}:queue:{bus.options['incoming_queue']}"
+    items = fake_redis.lrange(queue_key, 0, -1)
+    assert len(items) == 1
+    payload = json.loads(json.loads(items[0])["args"][0])
+    assert payload["bus_event_type"] == "demo_event"
+
+
+def test_url_overrides_host_port_and_db(fake_redis):
+    server = fake_redis.connection_pool.connection_kwargs["server"]
+    connection = {
+        "url": "redis://127.0.0.1:6379/5",
+        "host": "not-used",
+        "port": 1234,
+        "db": 9,
+        "namespace": "resque",
+    }
+    bus = Bus(connection=connection)
+    bus.connect()
+    bus.publish("url_event", {"x": 7})
+
+    queue_key = f"{bus.connection.namespace}:queue:{bus.options['incoming_queue']}"
+
+    # Should not write to the host/port/db path when URL is provided
+    assert fake_redis.lrange(queue_key, 0, -1) == []
+
+    # Should write to the DB specified in the URL
+    alt = fakeredis.FakeRedis(server=server, decode_responses=True, db=5)
+    items = alt.lrange(queue_key, 0, -1)
+    assert len(items) == 1
+    payload = json.loads(json.loads(items[0])["args"][0])
+    assert payload["bus_event_type"] == "url_event"

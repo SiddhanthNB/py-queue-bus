@@ -18,6 +18,9 @@ Publish Events (no rider needed in the publishing process):
 from py_queue_bus import Bus
 
 connection = {"host": "127.0.0.1", "port": 6379, "db": 0, "namespace": "resque"}
+# Or use a Redis URL (takes precedence over host/port/db if both are provided):
+# connection = {"url": "redis://:password@127.0.0.1:6379/0", "namespace": "resque"}
+
 bus = Bus(connection=connection)
 bus.connect()
 bus.publish("order_created", {"order_id": 1, "total": 10.0})
@@ -28,6 +31,8 @@ Subscribe Events:
 from py_queue_bus import Bus, Rider
 
 connection = {"host": "127.0.0.1", "port": 6379, "db": 0, "namespace": "resque"}
+# Or use a Redis URL (takes precedence over host/port/db if both are provided):
+# connection = {"url": "redis://:password@127.0.0.1:6379/0", "namespace": "resque"}
 app_key = "example_service"
 priority = "default"
 queue = f"{app_key}_{priority}"
@@ -60,9 +65,12 @@ rider.start()  # blocking worker
 ## Scheduling (RQ)
 - `publish_at` / `publish_in` enqueue scheduled publishes using RQ. Run a worker:
   ```bash
-  rq worker --with-scheduler queue_bus_schedule
+  rq worker --with-scheduler queue_bus_schedule # defaults to localhost
+  # if you use a Redis URL, pass it explicitly:
+  export REDIS_URL=redis://:password@host:port/db
+  rq worker --with-scheduler --url "$REDIS_URL" queue_bus_schedule
   ```
-- Example entrypoint: `py-queue-bus/examples/rq_worker.py`.
+- Use the official RQ CLI (as above) under a supervisor (systemd/docker/pm2) so it restarts if Redis drops the connection.
 - Note: Scheduling is Python-native via RQ. Node/Ruby schedulers (resque-scheduler/node-resque) won’t see Python-scheduled jobs; they only see fired jobs after RQ publishes them.
 
 ## Heartbeat

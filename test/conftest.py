@@ -27,6 +27,13 @@ def fake_redis(monkeypatch):
 
     # Patch the class to return FakeRedis instances (with same shared server)
     monkeypatch.setattr(redis, "Redis", PatchedFakeRedis)
+    monkeypatch.setattr(
+        redis,
+        "from_url",
+        lambda url, **kwargs: fakeredis.FakeRedis.from_url(
+            url, server=server, decode_responses=kwargs.get("decode_responses", True)
+        ),
+    )
     return client
 
 

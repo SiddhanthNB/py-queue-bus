@@ -16,6 +16,7 @@ CONNECTION = {
     "db": 0,
     "namespace": "resque",
 }
+# Or use: CONNECTION = {"url": "redis://:password@127.0.0.1:6379/0", "namespace": "resque"}
 APP_KEY = "example_service"
 PRIORITY = "default"
 QUEUE_NAME = f"{APP_KEY}_{PRIORITY}"
@@ -59,7 +60,10 @@ def main():
     rider = Rider(connection=CONNECTION, jobs=JOBS, queues=[QUEUE_NAME], to_drive=True)
     rider.connect()
     _log("Starting rider...")
-    rider.start()  # blocking
+    try:
+        rider.start() # blocking
+    except KeyboardInterrupt:
+        _log("Shutting down subscriber (KeyboardInterrupt).")
 
 
 if __name__ == "__main__":

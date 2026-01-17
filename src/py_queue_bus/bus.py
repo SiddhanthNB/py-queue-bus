@@ -19,6 +19,7 @@ class ConnectionOptions:
     port: int = 6379
     db: int = 0
     password: Optional[str] = None
+    url: Optional[str] = None
     namespace: str = utils.defaults()["namespace"]
 
     def to_dict(self) -> Dict[str, Any]:
@@ -27,6 +28,7 @@ class ConnectionOptions:
             "port": self.port,
             "db": self.db,
             "password": self.password,
+            "url": self.url,
             "namespace": self.namespace,
         }
 
@@ -49,6 +51,7 @@ class Bus:
             port=connection.get("port", ConnectionOptions.port),
             db=connection.get("db", connection.get("database", ConnectionOptions.db)),
             password=connection.get("password"),
+            url=connection.get("url"),
             namespace=connection.get("namespace", ConnectionOptions.namespace),
         )
         self.jobs = jobs or {}
@@ -56,13 +59,17 @@ class Bus:
         self._rq_queue: Optional[Queue] = None
 
     def connect(self) -> None:
-        self.redis = redis.Redis(
-            host=self.connection.host,
-            port=self.connection.port,
-            db=self.connection.db,
-            password=self.connection.password,
-            decode_responses=True,
-        )
+        if self.connection.url:
+            # URL wins; host/port/db/password are ignored when provided.
+            self.redis = redis.from_url(self.connection.url, decode_responses=True)
+        else:
+            self.redis = redis.Redis(
+                host=self.connection.host,
+                port=self.connection.port,
+                db=self.connection.db,
+                password=self.connection.password,
+                decode_responses=True,
+            )
 
     # RQ ---------------------------------------------------------------
     def _rq(self) -> Queue:
@@ -188,16 +195,25 @@ class Bus:
         return job.id
 
     def _connection_kwargs(self) -> Dict[str, Any]:
-        data = self.connection.to_dict()
-        data.update(
-            {
-                "incoming_queue": self.options["incoming_queue"],
-                "bus_class_key": self.options["bus_class_key"],
-                "app_prefix": self.options["app_prefix"],
-                "subscription_set": self.options["subscription_set"],
-            }
-        )
-        return data
+        base = {
+            "namespace": self.connection.namespace,
+            "incoming_queue": self.options["incoming_queue"],
+            "bus_class_key": self.options["bus_class_key"],
+            "app_prefix": self.options["app_prefix"],
+            "subscription_set": self.options["subscription_set"],
+        }
+        if self.connection.url:
+            base["url"] = self.connection.url
+        else:
+            base.update(
+                {
+                    "host": self.connection.host,
+                    "port": self.connection.port,
+                    "db": self.connection.db,
+                    "password": self.connection.password,
+                }
+            )
+        return base
 
 
 def _scheduled_publish(connection_kwargs: Dict[str, Any], event_type: str, args: Dict[str, Any]):

@@ -1,13 +1,17 @@
 # py-queue-bus
 
+[![PyPI version](https://img.shields.io/pypi/v/py-queue-bus.svg)](https://pypi.org/project/py-queue-bus/)
+[![Python versions](https://img.shields.io/pypi/pyversions/py-queue-bus.svg)](https://pypi.org/project/py-queue-bus/)
+
 Python implementation of Queue-Bus semantics compatible with `node-queue-bus` and Ruby `resque-bus`. Uses `redis-py` to publish bus events and a rider worker to fan out events to subscribed queues.
 
 ## Install
 ```bash
 pip install py-queue-bus
 ```
+Project on PyPI: https://pypi.org/project/py-queue-bus/
 
-## Basic usage (explicit)
+## Basic usage
 
 Publish Events (no rider needed in the publishing process):
 ```python

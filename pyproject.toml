@@ -30,6 +30,8 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "fakeredis>=2.23.0",
+  "build>=1.0",
+  "twine>=5.0",
 ]
 
 [tool.setuptools.packages.find]

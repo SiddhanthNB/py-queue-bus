@@ -22,20 +22,20 @@ PRIORITY = "default"
 QUEUE_NAME = f"{APP_KEY}_{PRIORITY}"
 
 
-def _log(msg):
+def _log(msg: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
     print(f"[SUB {now}] {msg}", flush=True)
 
 
-def order_created_handler(payload):
+def order_created_handler(payload: dict) -> None:
     _log(f"order_created_handler received: {payload}")
 
 
-def order_failed_handler(payload):
+def order_failed_handler(payload: dict) -> None:
     _log(f"order_failed_handler received: {payload}")
 
 
-def heartbeat_handler(payload):
+def heartbeat_handler(payload: dict) -> None:
     _log(f"heartbeat_handler received: {payload}")
 
 
@@ -46,7 +46,7 @@ JOBS = {
 }
 
 
-def main():
+def main() -> None:
     bus = Bus(connection=CONNECTION)
     bus.connect()
 

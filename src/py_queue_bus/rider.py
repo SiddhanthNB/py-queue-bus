@@ -25,6 +25,16 @@ class Rider:
         timeout: int = 5,
         to_drive: Optional[bool] = None,
     ):
+        """
+        Initialize a Rider.
+
+        Args:
+            connection: Redis connection settings (host/port/db/password/namespace or url, optional redis_kwargs).
+            jobs: Mapping of job name to handler (callable or object with perform()).
+            queues: Queues to listen on; if to_drive is True, the incoming queue is added automatically.
+            timeout: BLPOP timeout in seconds.
+            to_drive: Whether to include the incoming driver queue (defaults to config default).
+        """
         self.timeout = timeout
         self.bus = Bus(connection=connection, jobs=jobs)
         self.redis: Optional[redis.Redis] = None
@@ -37,6 +47,7 @@ class Rider:
         self._thread: Optional[threading.Thread] = None
 
     def connect(self) -> None:
+        """Connect to Redis and normalize queue list (dedup + include incoming if driving)."""
         self.bus.connect()
         self.redis = self.bus.redis
 
@@ -53,6 +64,7 @@ class Rider:
         self.queue_names = deduped
 
     def start(self, blocking: bool = True) -> None:
+        """Start the rider; optionally block the current thread."""
         assert self.redis, "Redis connection not established. Call connect()."
         self._running = True
         if blocking:
@@ -61,23 +73,38 @@ class Rider:
             self.start_in_thread()
 
     def start_in_thread(self) -> None:
+        """Start the rider loop in a daemon thread."""
         if self._thread and self._thread.is_alive():
             return
         self._thread = threading.Thread(target=self._work_loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
+        """Signal the rider to stop and join the thread if needed."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=1)
 
     # Processing --------------------------------------------------------
     def _work_loop(self) -> None:
+        """Poll queues and process jobs, with reconnect on Redis errors."""
         queue_keys = [self.bus._queue_key(q) for q in self.queue_names]
         if not queue_keys:
             raise ValueError("No queues configured for rider.")
         while self._running:
-            result = self.redis.blpop(queue_keys, timeout=self.timeout)
+            try:
+                self._ensure_connection()
+                result = self.redis.blpop(queue_keys, timeout=self.timeout)
+            except redis.exceptions.ConnectionError:
+                logger.warning("Lost Redis connection; retrying in 1s")
+                time.sleep(1)
+                self._reconnect()
+                continue
+            except Exception:
+                logger.exception("Unexpected error polling Redis; retrying in 1s")
+                time.sleep(1)
+                self._reconnect()
+                continue
             if not result:
                 continue
             queue_key, raw_job = result
@@ -87,6 +114,22 @@ class Rider:
                 logger.exception("Failed to decode job JSON from %s: %s", queue_key, raw_job)
             except Exception:
                 logger.exception("Unhandled error processing job from %s: %s", queue_key, raw_job)
+
+    def _ensure_connection(self) -> None:
+        """Ensure a Redis connection exists, reconnecting if absent."""
+        if self.redis is None:
+            self.bus.connect()
+            self.redis = self.bus.redis
+            logger.debug("Rider connected to Redis with options: %s", self.bus.connection)
+
+    def _reconnect(self) -> None:
+        """Attempt to reconnect to Redis after an error."""
+        try:
+            self.bus.connect()
+            self.redis = self.bus.redis
+            logger.info("Reconnected to Redis")
+        except Exception:
+            logger.exception("Failed to reconnect to Redis")
 
     def _process_job(self, queue_key: str, raw_job: str) -> None:
         job = json.loads(raw_job)

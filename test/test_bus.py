@@ -124,3 +124,76 @@ def test_url_overrides_host_port_and_db(fake_redis):
     assert len(items) == 1
     payload = json.loads(json.loads(items[0])["args"][0])
     assert payload["bus_event_type"] == "url_event"
+
+
+def test_redis_kwargs_override_defaults(monkeypatch):
+    captured = {}
+
+    def fake_redis_constructor(**kwargs):
+        captured.update(kwargs)
+        class Dummy:
+            pass
+        return Dummy()
+
+    monkeypatch.setattr("redis.Redis", fake_redis_constructor)
+    connection = {
+        "url": "redis://127.0.0.1:6379/2",
+        "namespace": "resque",
+        "redis_kwargs": {"decode_responses": False, "socket_timeout": 5},
+    }
+    bus = Bus(connection=connection)
+    bus.connect()
+    assert captured["decode_responses"] is False
+    assert captured["socket_timeout"] == 5
+    assert captured["db"] == 2  # from URL, not default
+
+
+def test_all_connection_fields_present_prefers_url_and_redis_kwargs(monkeypatch):
+    captured = {}
+
+    def fake_redis_constructor(**kwargs):
+        captured.update(kwargs)
+        class Dummy:
+            pass
+        return Dummy()
+
+    monkeypatch.setattr("redis.Redis", fake_redis_constructor)
+    connection = {
+        "url": "redis://127.0.0.1:6379/4",
+        "host": "ignored-host",
+        "port": 9999,
+        "db": 9,
+        "namespace": "resque",
+        "redis_kwargs": {"decode_responses": False, "socket_timeout": 3},
+    }
+    bus = Bus(connection=connection)
+    bus.connect()
+    # URL wins for host/port/db
+    assert captured["db"] == 4
+    # redis_kwargs win over defaults
+    assert captured["decode_responses"] is False
+    assert captured["socket_timeout"] == 3
+
+
+def test_redis_kwargs_override_url_params(monkeypatch):
+    captured = {}
+
+    def fake_redis_constructor(**kwargs):
+        captured.update(kwargs)
+        class Dummy:
+            pass
+        return Dummy()
+
+    monkeypatch.setattr("redis.Redis", fake_redis_constructor)
+    connection = {
+        # URL sets db=6, decode_responses defaults to True, socket_timeout defaults None
+        "url": "redis://127.0.0.1:6380/6?socket_timeout=1&decode_responses=true",
+        "namespace": "resque",
+        "redis_kwargs": {"decode_responses": False, "socket_timeout": 9},
+    }
+    bus = Bus(connection=connection)
+    bus.connect()
+    # URL values present, but redis_kwargs override them
+    assert captured["db"] == 6
+    assert captured["decode_responses"] is False
+    assert captured["socket_timeout"] == 9

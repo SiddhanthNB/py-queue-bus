@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Optional
 
 import redis
+from redis.connection import parse_url
 from rq import Queue
 
 from . import utils
@@ -37,42 +38,62 @@ class Bus:
     """Publishes events and manages queue-bus subscriptions using Redis."""
 
     def __init__(self, connection: Dict[str, Any], jobs: Optional[Dict[str, Callable]] = None):
+        """
+        Create a Bus with Redis connection settings and optional job handlers.
+
+        Args:
+            connection: Redis settings (host/port/db/password/namespace or url, optional redis_kwargs).
+            jobs: Optional mapping of job name to handler (callable or object with perform()).
+        """
         self.options: Dict[str, Any] = utils.defaults()
         self.options.update(
             {
-                "incoming_queue": connection.get("incoming_queue", self.options["incoming_queue"]),
-                "bus_class_key": connection.get("bus_class_key", self.options["bus_class_key"]),
-                "app_prefix": connection.get("app_prefix", self.options["app_prefix"]),
-                "subscription_set": connection.get("subscription_set", self.options["subscription_set"]),
+                "incoming_queue": connection.get("incoming_queue") or self.options["incoming_queue"],
+                "bus_class_key": connection.get("bus_class_key") or self.options["bus_class_key"],
+                "app_prefix": connection.get("app_prefix") or self.options["app_prefix"],
+                "subscription_set": connection.get("subscription_set") or self.options["subscription_set"],
             }
         )
         self.connection = ConnectionOptions(
-            host=connection.get("host", ConnectionOptions.host),
-            port=connection.get("port", ConnectionOptions.port),
-            db=connection.get("db", connection.get("database", ConnectionOptions.db)),
-            password=connection.get("password"),
-            url=connection.get("url"),
-            namespace=connection.get("namespace", ConnectionOptions.namespace),
+            host=connection.get("host") or ConnectionOptions.host,
+            port=connection.get("port") or ConnectionOptions.port,
+            db=connection.get("db") or ConnectionOptions.db,
+            namespace=connection.get("namespace") or ConnectionOptions.namespace,
+            password=connection.get("password") or ConnectionOptions.password,
+            url=connection.get("url") or ConnectionOptions.url,
         )
+        self.redis_kwargs = connection.get("redis_kwargs", {})
         self.jobs = jobs or {}
         self.redis: Optional[redis.Redis] = None
         self._rq_queue: Optional[Queue] = None
 
     def connect(self) -> None:
+        """Establish a Redis client using host/port or URL with optional overrides."""
+        kwargs: Dict[str, Any]
         if self.connection.url:
-            # URL wins; host/port/db/password are ignored when provided.
-            self.redis = redis.from_url(self.connection.url, decode_responses=True)
+            kwargs = parse_url(self.connection.url)
         else:
-            self.redis = redis.Redis(
-                host=self.connection.host,
-                port=self.connection.port,
-                db=self.connection.db,
-                password=self.connection.password,
-                decode_responses=True,
-            )
+            kwargs = {
+                "host": self.connection.host,
+                "port": self.connection.port,
+                "db": self.connection.db,
+                "password": self.connection.password,
+            }
+        defaults = {
+            "decode_responses": True,
+            "socket_keepalive": True,
+            "health_check_interval": 30,
+            "socket_connect_timeout": 10,
+            "retry_on_timeout": True,
+        }
+        for key, val in defaults.items():
+            kwargs.setdefault(key, val)
+        kwargs.update(self.redis_kwargs)
+        self.redis = redis.Redis(**kwargs)
 
     # RQ ---------------------------------------------------------------
     def _rq(self) -> Queue:
+        """Lazy-init the RQ queue used for scheduled publishes."""
         assert self.redis, "Redis connection not established. Call connect()."
         if self._rq_queue is None:
             self._rq_queue = Queue(name=SCHEDULE_QUEUE_NAME, connection=self.redis)
@@ -80,13 +101,16 @@ class Bus:
 
     # Redis helpers -----------------------------------------------------
     def _ns(self, suffix: str) -> str:
+        """Apply the configured namespace to a Redis key suffix."""
         return f"{self.connection.namespace}{suffix}"
 
     def _queue_key(self, queue_name: str) -> str:
+        """Namespace a queue key."""
         return f"{self.connection.namespace}:queue:{queue_name}"
 
     # Subscription helpers ---------------------------------------------
     def subscriptions(self, callback: Callback = None):
+        """Return all subscriptions grouped by app_key."""
         assert self.redis, "Redis connection not established. Call connect()."
         subscriptions: Dict[str, Dict[str, Any]] = {}
         count = 0
@@ -118,6 +142,16 @@ class Bus:
         return rubyized
 
     def subscribe(self, app_key: str, priority: str, job: str, matcher: Dict[str, Any], callback: Callback = None):
+        """
+        Register a subscription for an app/priority/job with a matcher.
+
+        Args:
+            app_key: Application key (normalized).
+            priority: Queue priority (e.g., "default").
+            job: Job name (must exist in the rider's jobs dict).
+            matcher: Matcher dict (e.g., {"bus_event_type": "order_created"}).
+            callback: Optional callback invoked after subscription is stored.
+        """
         assert self.redis, "Redis connection not established. Call connect()."
         app_key = utils.normalize(app_key)
         key = utils.hash_key(app_key, priority, job)
@@ -135,6 +169,7 @@ class Bus:
         return combined_queue_name
 
     def unsubscribe(self, app_key: str, priority: str, job: str, callback: Callback = None):
+        """Remove a specific subscription."""
         assert self.redis, "Redis connection not established. Call connect()."
         app_key = utils.normalize(app_key)
         key = utils.hash_key(app_key, priority, job)
@@ -147,6 +182,7 @@ class Bus:
             callback()
 
     def unsubscribe_all(self, app_key: str, callback: Callback = None):
+        """Remove all subscriptions for an app."""
         assert self.redis, "Redis connection not established. Call connect()."
         app_key = utils.normalize(app_key)
         self.redis.srem(self._ns(self.options["subscription_set"]), app_key)
@@ -163,6 +199,7 @@ class Bus:
         return True
 
     def publish(self, event_type: str, args: Dict[str, Any], callback: Callback = None):
+        """Publish an event immediately to the incoming queue."""
         payload = utils.publish_metadata(event_type, args)
         payload["bus_class_proxy"] = "QueueBus::Driver"
         to_run = self._enqueue(self.options["incoming_queue"], self.options["bus_class_key"], payload)
@@ -171,6 +208,7 @@ class Bus:
         return to_run
 
     def publish_heartbeat(self, callback: Callback = None):
+        """Publish a heartbeat event immediately."""
         payload = utils.publish_metadata("QueueBus::Heartbeat", {})
         payload["bus_class_proxy"] = "QueueBus::Heartbeat"
         to_run = self._enqueue(self.options["incoming_queue"], self.options["bus_class_key"], payload)

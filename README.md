@@ -18,8 +18,16 @@ Publish Events (no rider needed in the publishing process):
 from py_queue_bus import Bus
 
 connection = {"host": "127.0.0.1", "port": 6379, "db": 0, "namespace": "resque"}
+
 # Or use a Redis URL (takes precedence over host/port/db if both are provided):
 # connection = {"url": "redis://:password@127.0.0.1:6379/0", "namespace": "resque"}
+
+# Advanced: override Redis client options via `redis_kwargs` (applies even with a URL):
+# connection = {
+#     "url": "redis://:password@127.0.0.1:6379/0",
+#     "namespace": "resque",
+#     "redis_kwargs": {"socket_timeout": 5, "health_check_interval": 10},
+# }
 
 bus = Bus(connection=connection)
 bus.connect()

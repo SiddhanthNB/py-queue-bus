@@ -9,6 +9,7 @@ CONNECTION = {
     "namespace": "resque",
 }
 
+
 APP_KEY = "py_service"
 PRIORITY = "default"
 QUEUE = f"{APP_KEY}_{PRIORITY}"
@@ -57,7 +58,10 @@ def main():
     rider = Rider(connection=CONNECTION, jobs=jobs, queues=[QUEUE], to_drive=True)
     rider.connect()
     _log("Starting rider...")
-    rider.start()
+    try:
+        rider.start()
+    except KeyboardInterrupt:
+        _log("Shutting down subscriber (KeyboardInterrupt).")
 
 
 if __name__ == "__main__":

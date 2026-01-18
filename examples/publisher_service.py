@@ -19,12 +19,12 @@ CONNECTION = {
 # Or use: CONNECTION = {"url": "redis://:password@127.0.0.1:6379/0", "namespace": "resque"}
 
 
-def _log(msg):
+def _log(msg: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
     print(f"[PUB {now}] {msg}", flush=True)
 
 
-def main():
+def main() -> None:
     bus = Bus(connection=CONNECTION)
     bus.connect()
 

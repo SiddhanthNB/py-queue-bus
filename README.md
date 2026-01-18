@@ -5,6 +5,12 @@
 
 Python implementation of Queue-Bus semantics compatible with `node-queue-bus` and Ruby `resque-bus`. Uses `redis-py` to publish bus events and a rider worker to fan out events to subscribed queues.
 
+## What it is
+- Python services that need to interoperate with Node or Ruby queue-bus consumers/publishers.
+- Drop-in Redis schema and payload compatibility with node-queue-bus/resque-bus.
+- RQ-backed scheduling for Python-side delayed publishes.
+- See `examples/` for publisher/subscriber and scheduler runner; `test/node_service` and `test/python_service` for cross-language harnesses.
+
 ## Install
 ```bash
 pip install py-queue-bus
